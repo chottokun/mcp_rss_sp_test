@@ -1,0 +1,49 @@
+openapi: 3.0.0
+info:
+  title: RSS MCP Server API
+  version: 0.1.0
+paths:
+  /api/rss-proxy:
+    post:
+      summary: "Proxy for RSS Feeds"
+      operationId: "proxy_rss_feed"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url:
+                  type: string
+                  format: url
+                  description: "URL of the RSS feed"
+                opml:
+                  type: string
+                  description: "Content of the OPML file"
+      responses:
+        '200':
+          description: "Latest item from the feed"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedItem'
+        '400':
+          description: "Bad Request - Invalid URL or OPML"
+        '404':
+          description: "Feed not found or could not be parsed"
+components:
+  schemas:
+    FeedItem:
+      type: object
+      properties:
+        title:
+          type: string
+        link:
+          type: string
+          format: url
+        published_date:
+          type: string
+          format: date-time
+        description:
+          type: string
