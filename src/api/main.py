@@ -1,11 +1,13 @@
 import logging
 import time
+import httpx
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, HttpUrl
 from fastapi_mcp import FastApiMCP
 
 from src.models.feed import FeedItem
 from src.services.rss_proxy_service import get_latest_feed_item, RssProxyServiceError
+from src.lib.rss_parser import FeedParsingError
 
 app = FastAPI(
     title="RSS MCP Server",
@@ -27,11 +29,8 @@ async def log_requests(request: Request, call_next):
     )
     return response
 
-from typing import Optional
-
 class RssRequest(BaseModel):
-    url: Optional[HttpUrl] = None
-    opml: Optional[str] = None
+    url: HttpUrl
 
 @app.post("/api/rss-proxy", response_model=FeedItem)
 def proxy_rss_feed(request: RssRequest):
@@ -42,18 +41,21 @@ def proxy_rss_feed(request: RssRequest):
     try:
         feed_item = get_latest_feed_item(request.url)
         return feed_item
+    except FeedParsingError as e:
+        # Check if the cause is an HTTP error from the target server
+        if isinstance(e.__cause__, httpx.HTTPStatusError):
+            status_code = e.__cause__.response.status_code
+            if 500 <= status_code < 600:
+                # The dependency is down, so it's a Bad Gateway
+                raise HTTPException(status_code=502, detail=f"Could not fetch feed: Upstream server returned {status_code}")
+            else:
+                # Any other HTTP error (like 404) is treated as a client error
+                raise HTTPException(status_code=400, detail=f"Could not fetch feed: {e}")
+        # This occurs when the fetched content is not a valid feed
+        raise HTTPException(status_code=400, detail=f"Failed to parse feed: {e}")
     except RssProxyServiceError as e:
-        error_str = str(e).lower()
-        if "validation failed" in error_str or "missing a publication date" in error_str:
-            raise HTTPException(status_code=422, detail=f"Invalid data in source feed: {e}")
-
-        if "not well-formed" in error_str or "no entries" in error_str:
-            raise HTTPException(status_code=404, detail=f"Could not parse feed: {e}")
-
-        if "http error" in error_str:
-            raise HTTPException(status_code=404, detail=f"Could not fetch feed: {e}")
-
-        raise HTTPException(status_code=500, detail=f"Internal server error while processing feed: {e}")
+        # This occurs for other service-level issues
+        raise HTTPException(status_code=500, detail=f"Internal service error: {e}")
     except Exception as e:
         logger.error("An unexpected error occurred", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred")

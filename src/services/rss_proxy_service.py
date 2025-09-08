@@ -26,10 +26,8 @@ def get_latest_feed_item(url: HttpUrl) -> FeedItem:
             url=url_str, etag=etag, last_modified=last_modified
         )
 
-        if new_item is None and cached_entry:
-            return cached_entry.item
-
         if new_item:
+            # If we get a new item, cache and return it
             entry_to_cache = CacheEntry(
                 feed_url=url,
                 item=new_item,
@@ -41,11 +39,19 @@ def get_latest_feed_item(url: HttpUrl) -> FeedItem:
             return new_item
 
         if cached_entry:
+            # If there's no new item but we have a cached one, return it
             return cached_entry.item
-        else:
-            raise RssProxyServiceError("Failed to fetch feed and no cached version available.")
+
+        # If there's no new item and no cache, it's an error
+        raise RssProxyServiceError("Failed to fetch feed and no cached version available.")
 
     except FeedParsingError as e:
+        # If parsing fails but we have a cached version, return it
         if cached_entry:
             return cached_entry.item
-        raise RssProxyServiceError(str(e)) from e
+        # Otherwise, re-raise the parsing error to be handled by the API layer
+        raise e
+    except Exception as e:
+        if cached_entry:
+            return cached_entry.item
+        raise RssProxyServiceError(f"An unexpected error occurred: {e}") from e
