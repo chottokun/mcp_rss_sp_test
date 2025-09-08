@@ -55,7 +55,8 @@ def proxy_rss_feed(request: RssRequest):
 
         raise HTTPException(status_code=500, detail=f"Internal server error while processing feed: {e}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
+        logger.error("An unexpected error occurred", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred")
 
 # Mount the MCP server
 mcp = FastApiMCP(app)
