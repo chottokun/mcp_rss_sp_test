@@ -27,8 +27,11 @@ async def log_requests(request: Request, call_next):
     )
     return response
 
+from typing import Optional
+
 class RssRequest(BaseModel):
-    url: HttpUrl
+    url: Optional[HttpUrl] = None
+    opml: Optional[str] = None
 
 @app.post("/api/rss-proxy", response_model=FeedItem)
 def proxy_rss_feed(request: RssRequest):
