@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+feedparser
+listparser
+pytest
+httpx
+fastapi-mcp
+pyyaml
+pytest-mock
+jsonschema
