@@ -6,8 +6,8 @@ from typing import Optional
 class FeedItem(BaseModel):
     title: str
     link: HttpUrl
-    published_date: datetime
-    description: str
+    published_date: Optional[datetime] = None
+    description: Optional[str] = None
 
 
 class CacheEntry(BaseModel):
