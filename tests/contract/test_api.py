@@ -36,7 +36,7 @@ def test_rss_proxy_contract(mocker, mock_feed_item):
 
     # 2. Mock the service function
     mocker.patch(
-        "src.api.main.get_latest_feed_item",
+        "src.api.rss_router.get_latest_feed_item",
         return_value=mock_feed_item
     )
 
