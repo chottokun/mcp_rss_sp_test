@@ -64,6 +64,53 @@ def test_rss_proxy_contract(mocker, mock_feed_item):
     validate(instance=response_data, schema=response_schema)
 
 
+def test_rss_proxy_opml_contract(mocker, mock_feed_item):
+    """
+    Tests the POST /api/rss-proxy endpoint with an OPML payload.
+    """
+    opml_content = '<opml><body><outline xmlUrl="https://example.com/mocked-item"/></body></opml>'
+    request_body = {"opml": opml_content}
+
+    # Mock the service function
+    mock_get_item = mocker.patch(
+        "src.api.rss_router.get_latest_feed_item",
+        return_value=mock_feed_item
+    )
+
+    # Make the request
+    response = client.post("/api/rss-proxy", json=request_body)
+
+    # Validate that the service was called with the correct URL from the OPML
+    mock_get_item.assert_called_once_with(HttpUrl("https://example.com/mocked-item"))
+
+    # Validate Response
+    assert response.status_code == 200
+    response_data = response.json()
+    response_schema = openapi_spec["components"]["schemas"]["FeedItem"]
+    # We need to handle the datetime format again
+    if response_data.get('published_date'):
+        response_data['published_date'] = datetime.fromisoformat(response_data['published_date'].replace("Z", "+00:00")).isoformat()
+    validate(instance=response_data, schema=response_schema)
+
+
+def test_rss_proxy_returns_400_on_invalid_opml(mocker):
+    """Tests that a 400 is returned for invalid OPML content."""
+    request_body = {"opml": "<opml>not valid</opml>"}
+    response = client.post("/api/rss-proxy", json=request_body)
+    assert response.status_code == 400
+    assert "Invalid OPML" in response.json()["detail"]
+
+
+def test_rss_proxy_returns_422_with_both_url_and_opml(mocker):
+    """Tests that a 422 is returned when both url and opml are provided."""
+    request_body = {
+        "url": "https://example.com/some-url",
+        "opml": "<opml><body><outline xmlUrl=\"https://example.com/mocked-item\"/></body></opml>"
+    }
+    response = client.post("/api/rss-proxy", json=request_body)
+    assert response.status_code == 422 # FastAPI validation error
+
+
 def test_rss_proxy_returns_502_on_upstream_server_error(mocker):
     """Tests that a 502 Bad Gateway is returned if the upstream feed server fails."""
     mock_response = httpx.Response(503, request=httpx.Request("GET", "https://example.com"))

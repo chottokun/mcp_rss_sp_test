@@ -3,7 +3,7 @@ import time
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, HttpUrl
-from fastapi_mcp.server import add_mcp_server
+from fastapi_mcp import FastApiMCP
 
 from src.api import rss_router
 from src.models.feed import FeedItem
@@ -34,4 +34,5 @@ async def log_requests(request: Request, call_next):
 app.include_router(rss_router.router, prefix="/api")
 
 # Mount the MCP server
-add_mcp_server(app)
+mcp = FastApiMCP(app)
+mcp.mount()
