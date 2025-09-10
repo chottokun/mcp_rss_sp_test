@@ -68,3 +68,22 @@ def test_request_to_url_with_server_error():
     response = client.post("/api/rss-proxy", json={"url": SERVER_ERROR_URL})
     assert response.status_code == 502
     assert "Could not fetch feed" in response.json()["detail"]
+
+
+@pytest.mark.online
+def test_request_to_real_rss_feed():
+    """
+    Scenario: A request to a real, live RSS feed.
+    Expected: Returns 200 OK and a valid feed item.
+    Note: This test requires an internet connection and depends on an external service.
+    """
+    # Using a stable, well-known RSS feed for the test
+    real_rss_url = "http://feeds.bbci.co.uk/news/world/rss.xml"
+    response = client.post("/api/rss-proxy", json={"url": real_rss_url})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "title" in data
+    assert "link" in data
+    assert "description" in data
+    assert "published_date" in data
