@@ -5,8 +5,11 @@ from fastapi.testclient import TestClient
 from jsonschema import validate
 from pydantic import HttpUrl
 
+import httpx
 from src.api.main import app
 from src.models.feed import FeedItem
+from src.services.rss_proxy_service import RssProxyServiceError
+from src.lib.rss_parser import FeedParsingError
 
 # Load the OpenAPI spec
 with open("specs/001-rss-web-mcp/contracts/api.yaml", "r") as f:
@@ -59,3 +62,64 @@ def test_rss_proxy_contract(mocker, mock_feed_item):
 
     response_schema = openapi_spec["components"]["schemas"]["FeedItem"]
     validate(instance=response_data, schema=response_schema)
+
+
+def test_rss_proxy_returns_502_on_upstream_server_error(mocker):
+    """Tests that a 502 Bad Gateway is returned if the upstream feed server fails."""
+    mock_response = httpx.Response(503, request=httpx.Request("GET", "https://example.com"))
+    mock_error = FeedParsingError("Upstream error")
+    mock_error.__cause__ = httpx.HTTPStatusError("Service Unavailable", request=mock_response.request, response=mock_response)
+    mocker.patch(
+        "src.api.rss_router.get_latest_feed_item",
+        side_effect=mock_error
+    )
+    response = client.post("/api/rss-proxy", json={"url": "https://example.com/bad-feed"})
+    assert response.status_code == 502
+    assert "Upstream server returned 503" in response.json()["detail"]
+
+
+def test_rss_proxy_returns_400_on_upstream_client_error(mocker):
+    """Tests that a 400 Bad Request is returned if the upstream feed is not found."""
+    mock_response = httpx.Response(404, request=httpx.Request("GET", "https://example.com"))
+    mock_error = FeedParsingError("Upstream error")
+    mock_error.__cause__ = httpx.HTTPStatusError("Not Found", request=mock_response.request, response=mock_response)
+    mocker.patch(
+        "src.api.rss_router.get_latest_feed_item",
+        side_effect=mock_error
+    )
+    response = client.post("/api/rss-proxy", json={"url": "https://example.com/not-found-feed"})
+    assert response.status_code == 400
+    assert "Could not fetch feed" in response.json()["detail"]
+
+
+def test_rss_proxy_returns_400_on_feed_parsing_error(mocker):
+    """Tests that a 400 Bad Request is returned for a generic feed parsing error."""
+    mocker.patch(
+        "src.api.rss_router.get_latest_feed_item",
+        side_effect=FeedParsingError("Invalid feed format")
+    )
+    response = client.post("/api/rss-proxy", json={"url": "https://example.com/invalid-feed"})
+    assert response.status_code == 400
+    assert "Failed to parse feed: Invalid feed format" in response.json()["detail"]
+
+
+def test_rss_proxy_returns_500_on_service_error(mocker):
+    """Tests that a 500 Internal Server Error is returned for a service-level error."""
+    mocker.patch(
+        "src.api.rss_router.get_latest_feed_item",
+        side_effect=RssProxyServiceError("Cache is down")
+    )
+    response = client.post("/api/rss-proxy", json={"url": "https://example.com/any-feed"})
+    assert response.status_code == 500
+    assert "Internal service error: Cache is down" in response.json()["detail"]
+
+
+def test_rss_proxy_returns_500_on_unexpected_error(mocker):
+    """Tests that a 500 Internal Server Error is returned for any unexpected exception."""
+    mocker.patch(
+        "src.api.rss_router.get_latest_feed_item",
+        side_effect=Exception("Something broke")
+    )
+    response = client.post("/api/rss-proxy", json={"url": "https://example.com/any-feed"})
+    assert response.status_code == 500
+    assert "An unexpected error occurred" in response.json()["detail"]
